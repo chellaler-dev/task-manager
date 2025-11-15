@@ -13,12 +13,21 @@ const getUserFromToken = async (req, res, next) => {
       return res.status(401).json({ error: 'No token provided' });
     }
 
+    // Create Supabase client WITH user token
     const supabase = createClient(
       process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
+      process.env.SUPABASE_ANON_KEY,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
     );
 
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    // Validate user
+    const { data: { user }, error } = await supabase.auth.getUser();
 
     if (error || !user) {
       return res.status(401).json({ error: 'Invalid token' });
@@ -26,42 +35,18 @@ const getUserFromToken = async (req, res, next) => {
 
     req.user = user;
     req.supabase = supabase;
+
     next();
   } catch (error) {
     console.error('Auth error:', error);
-    res.status(500).json({ error: 'Authentication failed' });
+    return res.status(500).json({ error: 'Authentication failed' });
   }
 };
-
-// Get all tasks for current user
-router.get('/', getUserFromToken, async (req, res) => {
-  try {
-    const { status } = req.query;
-    
-    let query = req.supabase
-      .from('tasks')
-      .select('*')
-      .eq('user_id', req.user.id)
-      .order('created_at', { ascending: false });
-
-    if (status) {
-      query = query.eq('status', status);
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
-
-    res.json({ tasks: data || [] });
-  } catch (error) {
-    console.error('Get tasks error:', error);
-    res.status(500).json({ error: 'Failed to fetch tasks' });
-  }
-});
 
 // Get single task
 router.get('/:id', getUserFromToken, async (req, res) => {
   try {
+    console.log('Fetching task with ID:', req.params.id);
     const { data, error } = await req.supabase
       .from('tasks')
       .select('*')
@@ -83,9 +68,32 @@ router.get('/:id', getUserFromToken, async (req, res) => {
   }
 });
 
+// Get all tasks
+router.get('/', getUserFromToken, async (req, res) => {
+  try {
+    console.log('Fetching all tasks for user:', req.user.id);
+    const { data, error } = await req.supabase
+      .from('tasks')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({ tasks: data });
+  } catch (error) {
+    console.error('Get all tasks error:', error);
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+});
+
+
 // Create task
 router.post('/', getUserFromToken, async (req, res) => {
   try {
+    console.log('Creating task for user:', req.user.id);
     const { title, description, status = 'pending' } = req.body;
 
     if (!title) {
@@ -126,6 +134,7 @@ router.post('/', getUserFromToken, async (req, res) => {
 // Update task
 router.put('/:id', getUserFromToken, async (req, res) => {
   try {
+    console.log('Updating task with ID:', req.params.id);
     const { title, description, status } = req.body;
     
     const updates = {};
@@ -177,6 +186,7 @@ router.put('/:id', getUserFromToken, async (req, res) => {
 // Delete task
 router.delete('/:id', getUserFromToken, async (req, res) => {
   try {
+    console.log('Deleting task with ID:', req.params.id);
     const { data, error } = await req.supabase
       .from('tasks')
       .delete()

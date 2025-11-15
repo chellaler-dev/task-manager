@@ -8,19 +8,28 @@ const PORT = process.env.NOTIFICATION_SERVICE_PORT || 3003;
 
 app.use(express.json());
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
 
 // Middleware to verify token
 const getUserFromToken = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    
+
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });
     }
+
+    // Create Supabase client WITH user token
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
 
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
@@ -37,6 +46,8 @@ const getUserFromToken = async (req, res, next) => {
   }
 };
 
+
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', service: 'notification-service' });
@@ -45,8 +56,9 @@ app.get('/health', (req, res) => {
 // Get all notifications for user
 app.get('/notifications', getUserFromToken, async (req, res) => {
   try {
+    console.log('Fetching notifications for user:', req.user.id);
     const { read } = req.query;
-    
+
     let query = req.supabase
       .from('notifications')
       .select('*')
@@ -58,6 +70,8 @@ app.get('/notifications', getUserFromToken, async (req, res) => {
     }
 
     const { data, error } = await query;
+
+    console.log(data);
 
     if (error) throw error;
 
@@ -71,6 +85,7 @@ app.get('/notifications', getUserFromToken, async (req, res) => {
 // Mark notification as read
 app.put('/notifications/:id/read', getUserFromToken, async (req, res) => {
   try {
+    console.log('Marking notification as read for user:', req.user.id);
     const { data, error } = await req.supabase
       .from('notifications')
       .update({ read: true })
@@ -99,6 +114,7 @@ app.put('/notifications/:id/read', getUserFromToken, async (req, res) => {
 // Get unread count
 app.get('/notifications/unread/count', getUserFromToken, async (req, res) => {
   try {
+    console.log('Getting unread notification count for user:', req.user.id);
     const { count, error } = await req.supabase
       .from('notifications')
       .select('*', { count: 'exact', head: true })
