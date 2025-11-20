@@ -1,0 +1,72 @@
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: task-manager
+  labels:
+    app: user-service
+spec:
+  replicas: 2                    # Start with 2 copies
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+      - name: user-service
+        image: task-manager/user-service:latest
+        imagePullPolicy: Never    # Use local image, don't pull
+        ports:
+        - containerPort: 3001
+          name: http
+        env:
+        - name: USER_SERVICE_PORT
+          value: "3001"
+        envFrom:
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: app-secrets
+        resources:
+          requests:              # Minimum resources needed
+            memory: "128Mi"
+            cpu: "100m"          # 0.1 CPU core
+          limits:                # Maximum resources allowed
+            memory: "256Mi"
+            cpu: "200m"          # 0.2 CPU core
+        livenessProbe:           # Is container alive?
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:          # Is container ready for traffic?
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: task-manager
+spec:
+  type: ClusterIP              # Internal only
+  selector:
+    app: user-service
+  ports:
+  - port: 3001
+    targetPort: 3001
+    protocol: TCP
+    name: http
